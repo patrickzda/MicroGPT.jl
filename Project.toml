@@ -1,0 +1,7 @@
+name = "MicroGPT"
+uuid = "1ebec30e-b986-4b1f-8d66-8d14c2634e45"
+authors = ["Patrick Zdanowski p.zdanowski@campus.tu-berlin.de"]
+version = "1.0.0-DEV"
+
+[compat]
+julia = "1.11"

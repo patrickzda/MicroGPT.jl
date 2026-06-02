@@ -1,0 +1,3 @@
+[deps]
+Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+MicroGPT = "1ebec30e-b986-4b1f-8d66-8d14c2634e45"
