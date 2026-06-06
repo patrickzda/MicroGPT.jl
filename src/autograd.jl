@@ -50,3 +50,26 @@ function relu(a::Value)
     local_grad = a.data > zero(a.data) ? one(a.data) : zero(a.data)
     return Value(out, zero(out), (a,), (local_grad,))
 end
+
+function backward!(v::Value)
+    topo = Value[]
+    visited = Set{Value}()
+
+    function build_topo(node::Value)
+        if !(node in visited)
+            push!(visited, node)
+            for child in node.children
+                build_topo(child)
+            end
+            push!(topo, node)
+        end
+    end
+    build_topo(v)
+    v.grad = one(v.data)
+
+    for node in reverse(topo)
+        for (child, local_grad) in zip(node.children, node.local_grads)
+            child.grad += local_grad * node.grad
+        end
+    end
+end
