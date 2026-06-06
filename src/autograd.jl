@@ -1,0 +1,52 @@
+import Base: +, -, *, /, ^, log, exp
+
+mutable struct Value{T}
+    data::T
+    grad::T
+    children::Tuple
+    local_grads::Tuple
+end
+
+function Value(val::T) where T
+    return Value{T}(val, zero(val), (), ())
+end
+
+# Add
++(a::Value, b::Value) = Value(a.data + b.data, zero(a.data + b.data), (a, b), (one(a.data), one(b.data)))
++(a::Value, b::Real) = a + Value(b)
++(a::Real, b::Value) = Value(a) + b
+
+# Subract / negate
+-(a::Value) = a * -1
+-(a::Value, b::Value) = Value(a.data - b.data, zero(a.data - b.data), (a, b), (one(a.data), -one(b.data)))
+-(a::Value, b::Real) = a - Value(b)
+-(a::Real, b::Value) = Value(a) - b
+
+# Multiply
+*(a::Value, b::Value) = Value(a.data * b.data, zero(a.data * b.data), (a, b), (b.data, a.data))
+*(a::Value, b::Real) = a * Value(b)
+*(a::Real, b::Value) = Value(a) * b
+
+# Divide
+/(a::Value, b::Value) = a * (b ^ -1)
+/(a::Value, b::Real) = a / Value(b)
+/(a::Real, b::Value) = Value(a) / b
+
+# Pow
+^(a::Value, b::Real) = Value(a.data ^ b, zero(a.data ^ b), (a,), (b * (a.data ^ (b - one(b))),))
+
+# Log
+log(a::Value) = Value(log(a.data), zero(log(a.data)), (a,), (one(a.data) / a.data,))
+
+# Exp
+function exp(a::Value)
+    out = exp(a.data)
+    return Value(out, zero(out), (a,), (out,))
+end
+
+# ReLU
+function relu(a::Value)
+    out = a.data > zero(a.data) ? a.data : zero(a.data)
+    local_grad = a.data > zero(a.data) ? one(a.data) : zero(a.data)
+    return Value(out, zero(out), (a,), (local_grad,))
+end
