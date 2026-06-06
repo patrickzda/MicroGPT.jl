@@ -28,7 +28,7 @@ end
 *(a::Real, b::Value) = Value(a) * b
 
 # Divide
-/(a::Value, b::Value) = a * (b ^ -1)
+/(a::Value, b::Value) = Value(a.data / b.data, zero(a.data / b.data), (a, b), (one(a.data) / b.data, -a.data / b.data ^ 2))
 /(a::Value, b::Real) = a / Value(b)
 /(a::Real, b::Value) = Value(a) / b
 
