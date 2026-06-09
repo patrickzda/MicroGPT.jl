@@ -2,5 +2,5 @@ using MicroGPT
 using Test
 
 @testset "MicroGPT.jl" begin
-    # Write your tests here.
+    include("autograd_tests.jl")
 end
