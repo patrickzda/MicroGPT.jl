@@ -4,7 +4,8 @@ on:
     branches:
       - main
       - autograd
-      - dataloader-tokenizer
+      - dataloader-tokenizer+
+      - Adam
     tags: ['*']
   pull_request:
   workflow_dispatch:
