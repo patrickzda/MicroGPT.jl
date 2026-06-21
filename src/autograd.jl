@@ -51,6 +51,17 @@ function relu(a::Value)
     return Value(out, zero(out), (a,), (local_grad,))
 end
 
+
+"""
+    backward!(v::Value)
+
+Compute the gradients of `v` with respect to every `Value` in its computation
+graph via backpropagation.
+
+This mutates the `v.grad` and of all `Value`s in its graph. Gradients
+are accumulated, so reset them between independent backward passes if a
+node is reused.
+"""
 function backward!(v::Value)
     topo = Value[]
     visited = Set{Value}()
@@ -69,7 +80,7 @@ function backward!(v::Value)
 
     for node in reverse(topo)
         for (child, local_grad) in zip(node.children, node.local_grads)
-            child.grad += local_grad * node.grad
+            child.grad += local_grad * node.grad  # Accumulate gradients from parents to children
         end
     end
 end

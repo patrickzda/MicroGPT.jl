@@ -2,6 +2,15 @@
 *.jl.cov
 *.jl.mem
 /Manifest*.toml
+/test/Manifest*.toml
 /docs/Manifest*.toml
 /docs/build/
 .vscode/settings.json
+
+# Generated / downloaded datasets
+/test/input.txt
+/test/empty.txt
+/test/oneline.txt
+/input.txt
+/empty.txt
+/oneline.txt

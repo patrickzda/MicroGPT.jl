@@ -5,6 +5,7 @@ on:
       - main
       - autograd
       - dataloader-tokenizer
+      - cleanup-review-1
     tags: ['*']
   pull_request:
   workflow_dispatch:
