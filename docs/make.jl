@@ -19,5 +19,5 @@ makedocs(;
 
 deploydocs(;
     repo="github.com/patrickzda/MicroGPT.jl",
-    devbranch="master",
+    devbranch="main",
 )
