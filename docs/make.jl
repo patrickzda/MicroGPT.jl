@@ -9,7 +9,7 @@ makedocs(;
     sitename="MicroGPT.jl",
     format=Documenter.HTML(;
         canonical="https://patrickzda.github.io/MicroGPT.jl",
-        edit_link="master",
+        edit_link="main",
         assets=String[],
     ),
     pages=[
