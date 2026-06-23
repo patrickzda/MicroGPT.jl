@@ -14,6 +14,9 @@ makedocs(;
     ),
     pages=[
         "Home" => "index.md",
+        "Tokenizer" => "tokenizer.md",
+        "Autograd" => "autograd.md",
+        "API reference" => "api.md",
     ],
 )
 

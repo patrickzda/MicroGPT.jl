@@ -6,6 +6,7 @@ on:
       - autograd
       - dataloader-tokenizer
       - cleanup-review-1
+      - feedback-from-adrian
     tags: ['*']
   pull_request:
   workflow_dispatch:

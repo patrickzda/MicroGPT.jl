@@ -18,13 +18,13 @@ struct Tokenizer
 end
 
 """
-	Tokenizer(docs::Vector{String})
+	Tokenizer(docs::AbstractVector{<:AbstractString})
 
 Build a `Tokenizer` from `docs`. The vocabulary is the sorted set of all
 characters appearing in the corpus.
 """
-function Tokenizer(docs::Vector{String})
-	uchars = sort(collect(Set(join(docs))))
+function Tokenizer(docs::AbstractVector{<:AbstractString})
+	uchars = sort(unique(join(docs)))
 	char2id = Dict(c => i for (i, c) in enumerate(uchars))
 	bos = length(uchars) + 1
 	vocab_size = length(uchars) + 1
