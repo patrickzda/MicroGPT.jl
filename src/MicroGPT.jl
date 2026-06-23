@@ -1,7 +1,7 @@
 module MicroGPT
 
 using Downloads: download
-using Random: shuffle!, GLOBAL_RNG
+using Random: shuffle!, default_rng
 
 include("autograd.jl")
 include("dataloader.jl")

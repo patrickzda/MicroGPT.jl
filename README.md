@@ -2,7 +2,7 @@
 
 [![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://patrickzda.github.io/MicroGPT.jl/dev/)
 [![CI](https://github.com/patrickzda/MicroGPT.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/patrickzda/MicroGPT.jl/actions/workflows/CI.yml)
-[![Coverage](https://codecov.io/gh/patrickzda/MicroGPT.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/patrickzda/MicroGPT.jl)
+[![Coverage](https://codecov.io/gh/patrickzda/MicroGPT.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/patrickzda/MicroGPT.jl)
 
 **Requirements:** Julia 1.11
 
@@ -107,3 +107,17 @@ src/
 test/            # test suite and fixtures, run via test/runtests.jl
 docs/            # documentation sources
 ```
+
+## AI / LLM usage
+
+Large language models (e.g. ChatGPT / GitHub Copilot / Claude) were used as
+assistants during development of this project, for example to draft and refine
+documentation, tests, and parts of the source code. All AI-assisted output was
+reviewed and edited by the authors.
+
+## Data
+
+The dataset of names used by `load_data` comes from Andrej Karpathy's
+[makemore](https://github.com/karpathy/makemore) project and is redistributed
+under the MIT License. A copy bundled with the test suite lives at
+`test/names.txt`, with the accompanying license at `test/names.LICENSE`.

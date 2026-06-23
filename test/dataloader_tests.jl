@@ -1,7 +1,10 @@
 using Test 
 using MicroGPT
 
-@testset "Dataloader.jl" begin 
+@testset "Dataloader.jl" begin
+    # Use the dataset bundled with the test suite (test/names.txt, redistributed
+    # under test/names.LICENSE) instead of downloading
+    cp(joinpath(@__DIR__, "names.txt"), "input.txt"; force=true)
     touch("empty.txt")
     open("oneline.txt", "w") do f
         println(f, "name")
