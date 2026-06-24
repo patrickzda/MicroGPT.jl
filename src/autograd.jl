@@ -17,8 +17,18 @@ end
 
 Construct a leaf node holding `val` with zero gradient and no children.
 """
-function Value(val::T) where T
-    return Value(val, zero(val), (), ())
+function Value(val::T) where {T<:AbstractFloat}
+    return Value(val, zero(typeof(val)), (), ())
+end
+
+"""
+    Value(val::Real)
+
+Construct a leaf node from any real number, converting `data` and `grad` to floats.
+Just for easy definitions
+"""
+function Value(val::Real)
+    return Value(float(val))
 end
 
 # Add
