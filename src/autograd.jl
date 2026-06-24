@@ -1,14 +1,24 @@
 import Base: +, -, *, /, ^, log, exp
 
-mutable struct Value{T}
+"""
+    Value{T,C<:Tuple,G<:Tuple}
+
+A node in a scalar reverse-mode autograd graph.
+"""
+mutable struct Value{T,C<:Tuple,G<:Tuple}
     data::T
     grad::T
-    children::Tuple
-    local_grads::Tuple
+    children::C
+    local_grads::G
 end
 
+"""
+    Value(val)
+
+Construct a leaf node holding `val` with zero gradient and no children.
+"""
 function Value(val::T) where T
-    return Value{T}(val, zero(val), (), ())
+    return Value(val, zero(val), (), ())
 end
 
 # Add
@@ -28,12 +38,12 @@ end
 *(a::Real, b::Value) = Value(a) * b
 
 # Divide
-/(a::Value, b::Value) = Value(a.data / b.data, zero(a.data / b.data), (a, b), (one(a.data) / b.data, -a.data / b.data ^ 2))
+/(a::Value, b::Value) = Value(a.data / b.data, zero(a.data / b.data), (a, b), (one(a.data) / b.data, -a.data / b.data^2))
 /(a::Value, b::Real) = a / Value(b)
 /(a::Real, b::Value) = Value(a) / b
 
 # Pow
-^(a::Value, b::Real) = Value(a.data ^ b, zero(a.data ^ b), (a,), (b * (a.data ^ (b - one(b))),))
+^(a::Value, b::Real) = Value(a.data^b, zero(a.data^b), (a,), (b * (a.data^(b - one(b))),))
 
 # Log
 log(a::Value) = Value(log(a.data), zero(log(a.data)), (a,), (one(a.data) / a.data,))

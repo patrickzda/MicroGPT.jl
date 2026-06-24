@@ -4,8 +4,10 @@ on:
     branches:
       - main
       - autograd
-      - dataloader-tokenizer+
       - Adam
+      - dataloader-tokenizer
+      - cleanup-review-1
+      - feedback-from-adrian
     tags: ['*']
   pull_request:
   workflow_dispatch:

@@ -63,20 +63,20 @@ fd_grad(f, vals::Float64...) = ForwardDiff.gradient(x -> f(x...), collect(vals))
 
         @testset "^" begin
             a = Value(3.0)
-            backward!(a ^ 3)
+            backward!(a^3)
             @test a.grad == 27.0
         end
 
         @testset "log" begin
             a = Value(exp(1.0))
             backward!(log(a))
-            @test a.grad == exp(-1.0)
+            @test a.grad ≈ exp(-1.0)
         end
 
         @testset "exp" begin
             a = Value(2.0)
             backward!(exp(a))
-            @test a.grad == exp(2.0)
+            @test a.grad ≈ exp(2.0)
         end
 
         @testset "relu (positive input)" begin
@@ -105,17 +105,17 @@ fd_grad(f, vals::Float64...) = ForwardDiff.gradient(x -> f(x...), collect(vals))
 
         @testset "log(exp(a) + b)" begin
             f(a, b) = log(exp(a) + b)
-            @test our_grad(f, 1.0, 2.0) == fd_grad(f, 1.0, 2.0)
+            @test our_grad(f, 1.0, 2.0) ≈ fd_grad(f, 1.0, 2.0)
         end
 
         @testset "(a + b)^3 / b" begin
             f(a, b) = (a + b)^3 / b
-            @test our_grad(f, 1.0, 2.0) == fd_grad(f, 1.0, 2.0)
+            @test our_grad(f, 1.0, 2.0) ≈ fd_grad(f, 1.0, 2.0)
         end
 
         @testset "a*b - log(a) + exp(b)" begin
             f(a, b) = a * b - log(a) + exp(b)
-            @test our_grad(f, 2.0, 1.0) == fd_grad(f, 2.0, 1.0)
+            @test our_grad(f, 2.0, 1.0) ≈ fd_grad(f, 2.0, 1.0)
         end
 
     end

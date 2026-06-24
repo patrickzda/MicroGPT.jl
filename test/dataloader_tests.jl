@@ -1,16 +1,19 @@
 using Test 
 using MicroGPT
 
-@testset "Dataloader.jl" begin 
+@testset "Dataloader.jl" begin
+    # Use the dataset bundled with the test suite (test/names.txt, redistributed
+    # under test/names.LICENSE) instead of downloading
+    cp(joinpath(@__DIR__, "names.txt"), "input.txt"; force=true)
     touch("empty.txt")
     open("oneline.txt", "w") do f
         println(f, "name")
     end
     @testset "Output" begin
-        doc, doc_empty, doc_noshuffle, doc_oneline = (dataloader_JuML(), dataloader_JuML("empty.txt"), dataloader_JuML(shuffle=false), dataloader_JuML("oneline.txt"))
+        doc, doc_empty, doc_noshuffle, doc_oneline = (load_data(), load_data("empty.txt"), load_data(shuffle=false), load_data("oneline.txt"))
 
         @testset "empty path" begin
-            @test_throws SystemError dataloader_JuML("") # Test if the function throws an error if the input path doesn't exist
+            @test_throws SystemError load_data("") # Test if the function throws an error if the input path doesn't exist
         end
 
         @testset "doc type" begin
@@ -38,7 +41,7 @@ using MicroGPT
         end
 
         @testset "repeated calls" begin
-            @test dataloader_JuML(shuffle=false) == dataloader_JuML(shuffle=false)    # test if the output is consistent with repeated calls 
+            @test load_data(shuffle=false) == load_data(shuffle=false)    # test if the output is consistent with repeated calls 
         end
     end
 end
