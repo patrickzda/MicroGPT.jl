@@ -1,11 +1,13 @@
 module MicroGPT
 
-include("Dataloader.jl")
-include("Tokenizer.jl")
+using Downloads: download
+using Random: shuffle!, default_rng
 
-using .Data
-using .Tokenizer
+include("autograd.jl")
+include("dataloader.jl")
+include("tokenizer.jl")
 
-export dataloader_JuML, tokenizer_JuML
+export load_data, Tokenizer, encode, decode
+export Value, backward!, relu
 
 end
