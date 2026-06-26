@@ -46,13 +46,14 @@ end
 # dx = scale * dy - x * (scale^3 / n) * dot(dy, x) --> dx calculated with LLM, Link to prompt: https://chatgpt.com/share/6a3d41a0-445c-83eb-ba53-876e591115d8
 #
 function rmsnorm(x::AValue; eps::Float64 = 1e-5): #e=0.000 
-    ms = sum(xi * xi for xi in x.data) / len(x.data)
-    scale = (ms + 1e-5) ** -0.5
-    y = [xi * scale for xi in x.data]
-    n = len(x.data)
+    ms = sum(x.data .^ 2) / length(x.data)
+    scale = (ms + 1e-5) ^ -0.5
+    y = x.data .* scale
+    n = length(x.data)
 
     # x.data = scaled
     # grad = zero(y) --> x über
+    
     AValue(y, 
     zero(y),
     (x,),
