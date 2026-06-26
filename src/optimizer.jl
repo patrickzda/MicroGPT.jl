@@ -6,6 +6,7 @@ abstract type Optimizer end
     zero_grad!(opt::Optimizer)
 
 Set the shared gradients of `opt` to zero.
+This has to be done after each `step!` in order to reset the Gradients from the last update.
 """
 function zero_grad!(opt::Optimizer)
     for p in opt.params
@@ -13,9 +14,16 @@ function zero_grad!(opt::Optimizer)
     end
 end
 
-# Parameters for the Adam Optimizer
+"""
+    Adam <: Optimizer
+
+State for an Adam optimizer over a flat list of `Value` parameters.
+
+Holds the parameters being optimized along with the hyperparameters and the
+per-parameter moment estimates that Adam maintains across `step!` calls.
+"""
 mutable struct Adam <: Optimizer
-    params::Vector{<:Value}       # parameters to optimize
+    params::Vector{<:Value}     # parameters to optimize
     α::AbstractFloat            # learning rate
     β1::AbstractFloat           # first-moment decay
     β2::AbstractFloat           # second-moment decay
