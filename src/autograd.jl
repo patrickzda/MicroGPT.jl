@@ -1,5 +1,242 @@
 import Base: +, -, *, /, ^, log, exp
 
+struct AValue{D<:AbstractArray, G<:AbstractArray, P<:Tuple, F}
+    data::D
+    grad::G
+    parents::P
+    pullback_fn::F
+end
+
+function AValue(val::T) where {T<:AbstractArray}
+    return AValue(val, zero(val), (), _ -> ())
+end
+
+function +(a::AValue, b::AValue)
+    if size(a.data) != size(b.data)
+        throw(DimensionMismatch("Both arguments need the same shape."))
+    end
+
+    output = a.data + b.data
+
+    return AValue(
+        output,
+        zero(output),
+        (a, b),
+        dc -> (dc, dc)
+    )
+end
+
+function +(a::AValue, b::Real)
+    output = a.data .+ b
+
+    return AValue(
+        output,
+        zero(output),
+        (a,),
+        dc -> (dc,)
+    )
+end
+
+function +(a::Real, b::AValue)
+    return b + a
+end
+
+function -(a::AValue, b::AValue)
+    if size(a.data) != size(b.data)
+        throw(DimensionMismatch("Both arguments must have the same shape."))
+    end
+
+    output = a.data - b.data
+
+    return AValue(
+        output,
+        zero(output),
+        (a, b),
+        dc -> (dc, -dc)
+    )
+end
+
+function -(a::AValue, b::Real)
+    output = a.data .- b
+
+    return AValue(
+        output,
+        zero(output),
+        (a,),
+        dc -> (dc,)
+    )
+end
+
+function -(a::Real, b::AValue)
+    return -b + a
+end
+
+function -(a::AValue)
+    output = a.data .* -1
+
+    return AValue(
+        output,
+        zero(output),
+        (a,),
+        dc -> (-dc,)
+    )
+end
+
+function *(a::AValue{<:AbstractMatrix}, b::AValue{<:AbstractMatrix})
+    if size(a.data)[2] != size(b.data)[1]
+        throw(DimensionMismatch("Number of columns must be equal to number of rows."))
+    end
+
+    output = a.data * b.data
+
+    return AValue(
+        output,
+        zero(output),
+        (a, b),
+        dc -> (dc * transpose(b.data), transpose(a.data) * dc)
+    )
+end
+
+function *(a::AValue{<:AbstractMatrix}, b::AValue{<:AbstractVector})
+    if size(a.data)[2] != length(b.data)
+        throw(DimensionMismatch("Number of matrix columns must be equal to vector size."))
+    end
+
+    output = a.data * b.data
+
+    return AValue(
+        output,
+        zero(output),
+        (a, b),
+        dc -> (dc * transpose(b.data), transpose(a.data) * dc)
+    )
+end
+
+function *(a::AValue, b::Real)
+    output = a.data .* b
+
+    return AValue(
+        output,
+        zero(output),
+        (a,),
+        dc -> (dc .* b,)
+    )
+end
+
+function *(a::Real, b::AValue)
+    return b * a
+end
+
+function mul_elementwise(a::AValue, b::AValue)
+    if size(a.data) != size(b.data)
+        throw(DimensionMismatch("Both arguments must have the same shape."))
+    end
+
+    output = a.data .* b.data
+    return AValue(
+        output,
+        zero(output),
+        (a, b),
+        dc -> (dc .* b.data, dc .* a.data)
+    )
+end
+
+function /(a::AValue, b::Real)
+    output = a.data ./ b
+
+    return AValue(
+        output,
+        zero(output),
+        (a,),
+        dc -> (dc / b,)
+    )
+end
+
+function div_elementwise(a::AValue, b::AValue)
+    if size(a.data) != size(b.data)
+        throw(DimensionMismatch("Both arguments must have the same shape."))
+    end
+
+    output = a.data ./ b.data
+    return AValue(
+        output,
+        zero(output),
+        (a, b),
+        dc -> (dc ./ b.data, -dc .* a.data ./ (b.data .* b.data))
+    )
+end
+
+function pow_elementwise_scalar(a::AValue, b::Real)
+    output = a.data .^ b
+    return AValue(
+        output,
+        zero(output),
+        (a,),
+        dc -> (dc .* b .* (a.data .^ (b - 1)),)
+    )
+end
+
+function log(a::AValue)
+    output = log.(a.data)
+
+    return AValue(
+        output,
+        zero(output),
+        (a,),
+        dc -> (dc ./ a.data,)
+    )
+end
+
+function exp(a::AValue)
+    output = exp.(a.data)
+
+    return AValue(
+        output,
+        zero(output),
+        (a,),
+        dc -> (dc .* output,)
+    )
+end
+
+function relu(a::AValue)
+    output = max.(zero(eltype(a.data)), a.data)
+
+    return AValue(
+        output,
+        zero(output),
+        (a,),
+        dc -> (dc .* (a.data .> 0),)
+    )
+end
+
+
+function backward!(v::AValue)
+    topo = Any[]
+    visited = IdSet{Value}()
+
+    function build_topo(node::Value)
+        if !(node in visited)
+            push!(visited, node)
+            for parent in node.parents
+                build_topo(parent)
+            end
+            push!(topo, node)
+        end
+    end
+
+    build_topo(v)
+    fill!(v.grad, one(eltype(v.grad)))
+
+    for node in reverse(topo)
+        parent_grads = node.pullback_fn(node.grad)
+        for (parent, parent_grad) in zip(node.parents, parent_grads)
+            parent.grad .+= parent_grad
+        end
+    end
+end
+
+# TODO: Remove scalar-based autograd
+
 """
     Value{T,C<:Tuple,G<:Tuple}
 
