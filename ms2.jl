@@ -56,6 +56,10 @@ function rmsnorm(x::AValue; eps::Float64 = 1e-5): #e=0.000
     AValue(y, 
     zero(y),
     (x,),
-    (dy -> scale .* dy - x.data * (scale^3 / n) * dot(dy, x.data),))
+    #(dy -> scale .* dy - x.data * (scale^3 / n) * dot(dy, x.data),))
+    #  scale, scale^3/n, dot(dy, x.data) : skalar
+    #  dy, x.data: vector
+    # out: vector
+    (dy -> scale .* dy .- x.data .* (scale^3 / n) .* dot(dy, x.data),))
 
     # (ms)
