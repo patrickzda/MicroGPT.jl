@@ -1,5 +1,14 @@
 import Base: +, -, *, /, ^, log, exp
 
+"""
+    AValue{D<:AbstractArray, G<:AbstractArray, P<:Tuple, F}
+
+Node in a vector-based automatic differentiation graph.
+
+Each node stores its forward value `data`, accumulated gradient `grad`, 
+its parent nodes `parents` and a pullback function `pullback_fn` that is 
+used during reverse-mode automatic differentiation.
+"""
 struct AValue{D<:AbstractArray, G<:AbstractArray, P<:Tuple, F}
     data::D
     grad::G
@@ -7,6 +16,15 @@ struct AValue{D<:AbstractArray, G<:AbstractArray, P<:Tuple, F}
     pullback_fn::F
 end
 
+
+"""
+    AValue{val::T}
+
+Contructor for an AValue leaf node.
+
+Returns a node holding value `val`, zero grads, no parents and empty 
+pullback function.
+"""
 function AValue(val::T) where {T<:AbstractArray}
     return AValue(val, zero(val), (), _ -> ())
 end
@@ -127,6 +145,14 @@ function *(a::Real, b::AValue)
     return b * a
 end
 
+"""
+    mul_elementwise(a::AValue, b::AValue)
+
+Multiplies two AValues (`a` and `b`) elementwise. Both arguments 
+must be of same shape.
+
+Returns a new AValue type holding the elementwise multiplication.
+"""
 function mul_elementwise(a::AValue, b::AValue)
     if size(a.data) != size(b.data)
         throw(DimensionMismatch("Both arguments must have the same shape."))
@@ -152,6 +178,14 @@ function /(a::AValue, b::Real)
     )
 end
 
+"""
+    div_elementwise(a::AValue, b::AValue)
+
+Divides two AValues (`a` and `b`) elementwise. Both arguments 
+must be of same shape.
+
+Returns a new AValue type holding the elementwise division.
+"""
 function div_elementwise(a::AValue, b::AValue)
     if size(a.data) != size(b.data)
         throw(DimensionMismatch("Both arguments must have the same shape."))
@@ -166,6 +200,13 @@ function div_elementwise(a::AValue, b::AValue)
     )
 end
 
+"""
+    pow_elementwise_scalar(a::AValue, b::Real)
+
+Potentiates an AValue `a` by a scalar `b` elementwise.
+
+Returns a new AValue type holding the elementwise potentiation.
+"""
 function pow_elementwise_scalar(a::AValue, b::Real)
     output = a.data .^ b
     return AValue(
@@ -198,6 +239,13 @@ function exp(a::AValue)
     )
 end
 
+"""
+    relu(a::AValue)
+
+Applies elementwise ReLU to AValue `a`.
+
+Returns a new AValue type holding the elementwise ReLU.
+"""
 function relu(a::AValue)
     output = max.(zero(eltype(a.data)), a.data)
 
@@ -209,12 +257,20 @@ function relu(a::AValue)
     )
 end
 
+"""
+    backward!(v::AValue)
 
+Computes the gradients of `v` with respect to every `AValue` in its computation
+graph via backpropagation.
+
+This mutates all gradients in the compuational graph. Gradients
+are accumulated, so zeroing the gradients is required between passes.
+"""
 function backward!(v::AValue)
     topo = Any[]
     visited = IdSet{Value}()
 
-    function build_topo(node::Value)
+    function build_topo(node::AValue)
         if !(node in visited)
             push!(visited, node)
             for parent in node.parents
@@ -235,7 +291,7 @@ function backward!(v::AValue)
     end
 end
 
-# TODO: Remove scalar-based autograd
+# TODO: Remove the following scalar-based autograd implementation
 
 """
     Value{T,C<:Tuple,G<:Tuple}
