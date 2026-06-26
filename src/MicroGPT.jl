@@ -8,6 +8,6 @@ include("dataloader.jl")
 include("tokenizer.jl")
 
 export load_data, Tokenizer, encode, decode
-export Value, backward!, relu
+export AValue, Value, backward!, relu
 
 end

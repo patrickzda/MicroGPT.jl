@@ -1,4 +1,4 @@
-import Base: +, -, *, /, ^, log, exp
+import Base: +, -, *, /, log, exp, sum
 
 """
     AValue{D<:AbstractArray, G<:AbstractArray, P<:Tuple, F}
@@ -236,6 +236,17 @@ function exp(a::AValue)
         zero(output),
         (a,),
         dc -> (dc .* output,)
+    )
+end
+
+function sum(a::AValue{<:AbstractVector})
+    output = fill(sum(a.data))
+
+    return AValue(
+        output,
+        zero(output),
+        (a,),
+        dc -> (fill(dc[], size(a.data)),)
     )
 end
 

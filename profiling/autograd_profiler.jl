@@ -5,37 +5,25 @@ using MicroGPT
 
 const DIM_IN = 256
 const DIM_OUT = 256
-const STEPS = 100
+const STEPS = 1000
 
 Random.seed!(42)
 
 function zero_grad!(W, b, x)
-    for entry in W
-        entry.grad = zero(entry.grad)
-    end
-
-    for entry in b
-        entry.grad = zero(entry.grad)
-    end
-
-    for entry in x
-        entry.grad = zero(entry.grad)
-    end
+    fill!(W.grad, zero(eltype(W.grad)))
+    fill!(b.grad, zero(eltype(b.grad)))
+    fill!(x.grad, zero(eltype(x.grad)))
 end
 
 function forward(W, b, x)
-    output = [
-        sum(W[i, j] * x[j] for j in 1:DIM_IN)
-        for i in 1:DIM_OUT
-    ]
-
-    return relu.(output .+ b)
+    output = W * x + b
+    return relu(output)
 end
 
 function compute_one_step!(W, b, x)
     y = forward(W, b, x)
 
-    loss = sum(y; init=Value(0.0))
+    loss = sum(y)
     backward!(loss)
 
     return loss
@@ -51,8 +39,8 @@ function count_nodes(root)
 
         push!(visited_set, node)
 
-        for child in node.children
-            visit(child)
+        for parent in node.parents
+            visit(parent)
         end
     end
 
@@ -60,9 +48,9 @@ function count_nodes(root)
     return length(visited_set)
 end
 
-W = [Value(randn()) for _ in 1:DIM_OUT, _ in 1:DIM_IN]
-b = [Value(randn()) for _ in 1:DIM_OUT]
-x = Value.(randn(DIM_IN))
+W = AValue(randn(DIM_OUT, DIM_IN))
+b = AValue(randn(DIM_OUT))
+x = AValue(randn(DIM_IN))
 
 # Run once for compilation and count total nodes
 zero_grad!(W, b, x)
@@ -72,8 +60,12 @@ println("Total nodes: ", count_nodes(loss))
 Profile.clear()
 
 # Generate profile view
-zero_grad!(W, b, x)
-ProfileView.@profview compute_one_step!(W, b, x)
+ProfileView.@profview begin
+    for i in 1:STEPS
+        zero_grad!(W, b, x)
+        compute_one_step!(W, b, x)
+    end
+end
 
 # Measure execution time and allocations
 zero_grad!(W, b, x)
