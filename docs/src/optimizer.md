@@ -33,11 +33,3 @@ parameters and accepts the standard Adam hyperparameters as keyword arguments:
 ```julia
 opt = Adam(params; α=0.001, β1=0.9, β2=0.999)
 ```
-
-## Reference
-
-```@docs
-Adam
-step!
-zero_grad!
-```
