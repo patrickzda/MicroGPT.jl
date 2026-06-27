@@ -16,6 +16,7 @@ makedocs(;
         "Home" => "index.md",
         "Tokenizer" => "tokenizer.md",
         "Autograd" => "autograd.md",
+        "Optimizer" => "optimizer.md",
         "API reference" => "api.md",
     ],
 )

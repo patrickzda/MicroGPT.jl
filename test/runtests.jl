@@ -5,4 +5,5 @@ using Test
     include("tokenizer_tests.jl")
     include("dataloader_tests.jl")
     include("autograd_tests.jl")
+    include("optimizer_tests.jl")
 end

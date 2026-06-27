@@ -4,6 +4,7 @@ on:
     branches:
       - main
       - autograd
+      - Adam
       - dataloader-tokenizer
       - cleanup-review-1
       - feedback-from-adrian
