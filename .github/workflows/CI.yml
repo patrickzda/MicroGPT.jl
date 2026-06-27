@@ -8,6 +8,7 @@ on:
       - dataloader-tokenizer
       - cleanup-review-1
       - feedback-from-adrian
+      - autograd-vec
     tags: ['*']
   pull_request:
   workflow_dispatch:

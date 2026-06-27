@@ -1,34 +1,160 @@
-import Base: +, -, *, /, ^, log, exp
+import Base: +, -, *, /, log, exp, sum
 
 """
-    Value{T,C<:Tuple,G<:Tuple}
+    AValue{D<:AbstractArray, G<:AbstractArray, P<:Tuple, F}
 
-A node in a scalar reverse-mode autograd graph.
+Node in a vector-based automatic differentiation graph.
+
+Each node stores its forward value `data`, accumulated gradient `grad`, 
+its parent nodes `parents` and a pullback function `pullback_fn` that is 
+used during reverse-mode automatic differentiation.
 """
-mutable struct Value{T,C<:Tuple,G<:Tuple}
-    data::T
-    grad::T
-    children::C
-    local_grads::G
+struct AValue{D<:AbstractArray, G<:AbstractArray, P<:Tuple, F}
+    data::D
+    grad::G
+    parents::P
+    pullback_fn::F
+end
+
+
+"""
+    AValue{val::T}
+
+Constructor for an AValue leaf node.
+
+Returns a node holding value `val`, zero grads, no parents and empty 
+pullback function.
+"""
+function AValue(val::T) where {T<:AbstractArray}
+    return AValue(val, zero(val), (), _ -> ())
+end
+
+function +(a::AValue, b::AValue)
+    if size(a.data) != size(b.data)
+        throw(DimensionMismatch("Both arguments need the same shape."))
+    end
+
+    output = a.data + b.data
+
+    return AValue(
+        output,
+        zero(output),
+        (a, b),
+        dc -> (dc, dc)
+    )
+end
+
+function +(a::AValue, b::Real)
+    output = a.data .+ b
+
+    return AValue(
+        output,
+        zero(output),
+        (a,),
+        dc -> (dc,)
+    )
+end
+
+function +(a::Real, b::AValue)
+    return b + a
+end
+
+function -(a::AValue, b::AValue)
+    if size(a.data) != size(b.data)
+        throw(DimensionMismatch("Both arguments must have the same shape."))
+    end
+
+    output = a.data - b.data
+
+    return AValue(
+        output,
+        zero(output),
+        (a, b),
+        dc -> (dc, -dc)
+    )
+end
+
+function -(a::AValue, b::Real)
+    output = a.data .- b
+
+    return AValue(
+        output,
+        zero(output),
+        (a,),
+        dc -> (dc,)
+    )
+end
+
+function -(a::Real, b::AValue)
+    return -b + a
+end
+
+function -(a::AValue)
+    output = a.data .* -1
+
+    return AValue(
+        output,
+        zero(output),
+        (a,),
+        dc -> (-dc,)
+    )
+end
+
+function *(a::AValue{<:AbstractMatrix}, b::AValue{<:AbstractMatrix})
+    if size(a.data)[2] != size(b.data)[1]
+        throw(DimensionMismatch("Number of columns must be equal to number of rows."))
+    end
+
+    output = a.data * b.data
+
+    return AValue(
+        output,
+        zero(output),
+        (a, b),
+        dc -> (dc * transpose(b.data), transpose(a.data) * dc)
+    )
+end
+
+function *(a::AValue{<:AbstractMatrix}, b::AValue{<:AbstractVector})
+    if size(a.data)[2] != length(b.data)
+        throw(DimensionMismatch("Number of matrix columns must be equal to vector size."))
+    end
+
+    output = a.data * b.data
+
+    return AValue(
+        output,
+        zero(output),
+        (a, b),
+        dc -> (dc * transpose(b.data), transpose(a.data) * dc)
+    )
+end
+
+function *(a::AValue, b::Real)
+    output = a.data .* b
+
+    return AValue(
+        output,
+        zero(output),
+        (a,),
+        dc -> (dc .* b,)
+    )
+end
+
+function *(a::Real, b::AValue)
+    return b * a
 end
 
 """
-    Value(val)
+    mul_elementwise(a::AValue, b::AValue)
 
-Construct a leaf node holding `val` with zero gradient and no children.
-"""
-function Value(val::T) where {T<:AbstractFloat}
-    return Value(val, zero(typeof(val)), (), ())
-end
+Multiplies two AValues (`a` and `b`) elementwise. Both arguments 
+must be of same shape.
 
+Returns a new AValue type holding the elementwise multiplication.
 """
-    Value(val::Real)
-
-Construct a leaf node from any real number, converting `data` and `grad` to floats.
-Just for easy definitions
-"""
-function Value(val::Real)
-    return Value(float(val))
+function Value(val::T) where T
+    return Value(val, zero(val), (), ())
 end
 
 # Add
@@ -71,36 +197,36 @@ function relu(a::Value)
     return Value(out, zero(out), (a,), (local_grad,))
 end
 
-
 """
-    backward!(v::Value)
+    backward!(v::AValue)
 
-Compute the gradients of `v` with respect to every `Value` in its computation
+Computes the gradients of `v` with respect to every `AValue` in its computation
 graph via backpropagation.
 
-This mutates the `v.grad` and of all `Value`s in its graph. Gradients
-are accumulated, so reset them between independent backward passes if a
-node is reused.
+This mutates all gradients in the computational graph. Gradients
+are accumulated, so zeroing the gradients is required between passes.
 """
-function backward!(v::Value)
-    topo = Value[]
-    visited = Set{Value}()
+function backward!(v::AValue)
+    topo = Any[]
+    visited = IdSet{Any}()
 
-    function build_topo(node::Value)
+    function build_topo(node)
         if !(node in visited)
             push!(visited, node)
-            for child in node.children
-                build_topo(child)
+            for parent in node.parents
+                build_topo(parent)
             end
             push!(topo, node)
         end
     end
+
     build_topo(v)
-    v.grad = one(v.data)
+    fill!(v.grad, one(eltype(v.grad)))
 
     for node in reverse(topo)
-        for (child, local_grad) in zip(node.children, node.local_grads)
-            child.grad += local_grad * node.grad  # Accumulate gradients from parents to children
+        parent_grads = node.pullback_fn(node.grad)
+        for (parent, parent_grad) in zip(node.parents, parent_grads)
+            parent.grad .+= parent_grad
         end
     end
 end
