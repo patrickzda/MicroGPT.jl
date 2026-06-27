@@ -10,10 +10,10 @@ to populate the gradients of every node in the graph:
 ```@example autograd
 using MicroGPT
 
-a = AValue([1.0 2.0])
-b = AValue([3.0 4.0])
-c = a * b + relu(a - b)
-backward!(c)
+W = AValue([1.0 2.0; 3.0 4.0])
+x = AValue([5.0, 6.0])
 
-(value = c.data, da = a.grad, db = b.grad)
+y = W * x
+loss = sum(relu(y))
+backward!(loss)
 ```
