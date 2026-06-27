@@ -32,7 +32,7 @@ end
 # dx = p .* (dy - dot(dy, p))
 #
 function softmax(x::AValue)
-    e = exp .(x.data .- maximum(x.data))
+    e = exp.(x.data .- maximum(x.data))
     p = e ./ sum(e)
 
     AValue(p,
@@ -45,7 +45,8 @@ end
 # Forward: y = x * scale, scale = (mean(x^2) + 0.00..)^(-0.5)
 # dx = scale * dy - x * (scale^3 / n) * dot(dy, x) --> dx calculated with LLM, Link to prompt: https://chatgpt.com/share/6a3d41a0-445c-83eb-ba53-876e591115d8
 #
-function rmsnorm(x::AValue; eps::Float64 = 1e-5): #e=0.000 
+ #e=0.000 
+function rmsnorm(x::AValue; eps::Float64 = 1e-5)
     n = length(x.data)
     ms = sum(x.data .^ 2) / n
     scale = (ms + eps) ^ -0.5
@@ -64,3 +65,4 @@ function rmsnorm(x::AValue; eps::Float64 = 1e-5): #e=0.000
     (dy -> scale .* dy .- x.data .* (scale^3 / n) .* dot(dy, x.data),))
 
     # (ms)
+end

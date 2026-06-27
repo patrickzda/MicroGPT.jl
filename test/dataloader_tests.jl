@@ -45,8 +45,3 @@ using MicroGPT
         end
     end
 end
-using Test 
-using MicroGPT
-
-@testset "Dataloader.jl" begin 
-    
