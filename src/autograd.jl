@@ -1,96 +1,381 @@
-import Base: +, -, *, /, ^, log, exp
+import Base: +, -, *, /, log, exp, sum
 
 """
-    Value{T,C<:Tuple,G<:Tuple}
+    AValue{D<:AbstractArray, G<:AbstractArray, P<:Tuple, F}
 
-A node in a scalar reverse-mode autograd graph.
+Node in a vector-based automatic differentiation graph.
+
+Each node stores its forward value `data`, accumulated gradient `grad`, 
+its parent nodes `parents` and a pullback function `pullback_fn` that is 
+used during reverse-mode automatic differentiation.
 """
-mutable struct Value{T,C<:Tuple,G<:Tuple}
-    data::T
-    grad::T
-    children::C
-    local_grads::G
-end
-
-"""
-    Value(val)
-
-Construct a leaf node holding `val` with zero gradient and no children.
-"""
-function Value(val::T) where T
-    return Value(val, zero(val), (), ())
-end
-
-# Add
-+(a::Value, b::Value) = Value(a.data + b.data, zero(a.data + b.data), (a, b), (one(a.data), one(b.data)))
-+(a::Value, b::Real) = a + Value(b)
-+(a::Real, b::Value) = Value(a) + b
-
-# Subract / negate
--(a::Value) = a * -1
--(a::Value, b::Value) = Value(a.data - b.data, zero(a.data - b.data), (a, b), (one(a.data), -one(b.data)))
--(a::Value, b::Real) = a - Value(b)
--(a::Real, b::Value) = Value(a) - b
-
-# Multiply
-*(a::Value, b::Value) = Value(a.data * b.data, zero(a.data * b.data), (a, b), (b.data, a.data))
-*(a::Value, b::Real) = a * Value(b)
-*(a::Real, b::Value) = Value(a) * b
-
-# Divide
-/(a::Value, b::Value) = Value(a.data / b.data, zero(a.data / b.data), (a, b), (one(a.data) / b.data, -a.data / b.data^2))
-/(a::Value, b::Real) = a / Value(b)
-/(a::Real, b::Value) = Value(a) / b
-
-# Pow
-^(a::Value, b::Real) = Value(a.data^b, zero(a.data^b), (a,), (b * (a.data^(b - one(b))),))
-
-# Log
-log(a::Value) = Value(log(a.data), zero(log(a.data)), (a,), (one(a.data) / a.data,))
-
-# Exp
-function exp(a::Value)
-    out = exp(a.data)
-    return Value(out, zero(out), (a,), (out,))
-end
-
-# ReLU
-function relu(a::Value)
-    out = a.data > zero(a.data) ? a.data : zero(a.data)
-    local_grad = a.data > zero(a.data) ? one(a.data) : zero(a.data)
-    return Value(out, zero(out), (a,), (local_grad,))
+struct AValue{D<:AbstractArray, G<:AbstractArray, P<:Tuple, F}
+    data::D
+    grad::G
+    parents::P
+    pullback_fn::F
 end
 
 
 """
-    backward!(v::Value)
+    AValue{val::T}
 
-Compute the gradients of `v` with respect to every `Value` in its computation
+Constructor for an AValue leaf node.
+
+Returns a node holding value `val`, zero grads, no parents and empty 
+pullback function.
+"""
+function AValue(val::T) where {T<:AbstractArray}
+    return AValue(val, zero(val), (), _ -> ())
+end
+
+function +(a::AValue, b::AValue)
+    if size(a.data) != size(b.data)
+        throw(DimensionMismatch("Both arguments need the same shape."))
+    end
+
+    output = a.data + b.data
+
+    return AValue(
+        output,
+        zero(output),
+        (a, b),
+        dc -> (dc, dc)
+    )
+end
+
+function +(a::AValue, b::Real)
+    output = a.data .+ b
+
+    return AValue(
+        output,
+        zero(output),
+        (a,),
+        dc -> (dc,)
+    )
+end
+
+function +(a::Real, b::AValue)
+    return b + a
+end
+
+function -(a::AValue, b::AValue)
+    if size(a.data) != size(b.data)
+        throw(DimensionMismatch("Both arguments must have the same shape."))
+    end
+
+    output = a.data - b.data
+
+    return AValue(
+        output,
+        zero(output),
+        (a, b),
+        dc -> (dc, -dc)
+    )
+end
+
+function -(a::AValue, b::Real)
+    output = a.data .- b
+
+    return AValue(
+        output,
+        zero(output),
+        (a,),
+        dc -> (dc,)
+    )
+end
+
+function -(a::Real, b::AValue)
+    return -b + a
+end
+
+function -(a::AValue)
+    output = a.data .* -1
+
+    return AValue(
+        output,
+        zero(output),
+        (a,),
+        dc -> (-dc,)
+    )
+end
+
+function *(a::AValue{<:AbstractMatrix}, b::AValue{<:AbstractMatrix})
+    if size(a.data)[2] != size(b.data)[1]
+        throw(DimensionMismatch("Number of columns must be equal to number of rows."))
+    end
+
+    output = a.data * b.data
+
+    return AValue(
+        output,
+        zero(output),
+        (a, b),
+        dc -> (dc * transpose(b.data), transpose(a.data) * dc)
+    )
+end
+
+function *(a::AValue{<:AbstractMatrix}, b::AValue{<:AbstractVector})
+    if size(a.data)[2] != length(b.data)
+        throw(DimensionMismatch("Number of matrix columns must be equal to vector size."))
+    end
+
+    output = a.data * b.data
+
+    return AValue(
+        output,
+        zero(output),
+        (a, b),
+        dc -> (dc * transpose(b.data), transpose(a.data) * dc)
+    )
+end
+
+function *(a::AValue, b::Real)
+    output = a.data .* b
+
+    return AValue(
+        output,
+        zero(output),
+        (a,),
+        dc -> (dc .* b,)
+    )
+end
+
+function *(a::Real, b::AValue)
+    return b * a
+end
+
+"""
+    mul_elementwise(a::AValue, b::AValue)
+
+Multiplies two AValues (`a` and `b`) elementwise. Both arguments 
+must be of same shape.
+
+Returns a new AValue type holding the elementwise multiplication.
+"""
+function mul_elementwise(a::AValue, b::AValue)
+    if size(a.data) != size(b.data)
+        throw(DimensionMismatch("Both arguments must have the same shape."))
+    end
+
+    output = a.data .* b.data
+    return AValue(
+        output,
+        zero(output),
+        (a, b),
+        dc -> (dc .* b.data, dc .* a.data)
+    )
+end
+
+function /(a::AValue, b::Real)
+    output = a.data ./ b
+
+    return AValue(
+        output,
+        zero(output),
+        (a,),
+        dc -> (dc / b,)
+    )
+end
+
+"""
+    div_elementwise(a::AValue, b::AValue)
+
+Divides two AValues (`a` and `b`) elementwise. Both arguments 
+must be of same shape.
+
+Returns a new AValue type holding the elementwise division.
+"""
+function div_elementwise(a::AValue, b::AValue)
+    if size(a.data) != size(b.data)
+        throw(DimensionMismatch("Both arguments must have the same shape."))
+    end
+
+    output = a.data ./ b.data
+    return AValue(
+        output,
+        zero(output),
+        (a, b),
+        dc -> (dc ./ b.data, -dc .* a.data ./ (b.data .* b.data))
+    )
+end
+
+"""
+    pow_elementwise_scalar(a::AValue, b::Real)
+
+Potentiates an AValue `a` by a scalar `b` elementwise.
+
+Returns a new AValue type holding the elementwise potentiation.
+"""
+function pow_elementwise_scalar(a::AValue, b::Real)
+    output = a.data .^ b
+    return AValue(
+        output,
+        zero(output),
+        (a,),
+        dc -> (dc .* b .* (a.data .^ (b - 1)),)
+    )
+end
+
+function log(a::AValue)
+    output = log.(a.data)
+
+    return AValue(
+        output,
+        zero(output),
+        (a,),
+        dc -> (dc ./ a.data,)
+    )
+end
+
+function exp(a::AValue)
+    output = exp.(a.data)
+
+    return AValue(
+        output,
+        zero(output),
+        (a,),
+        dc -> (dc .* output,)
+    )
+end
+
+function sum(a::AValue{<:AbstractVector})
+    output = fill(sum(a.data))
+
+    return AValue(
+        output,
+        zero(output),
+        (a,),
+        dc -> (fill(dc[], size(a.data)),)
+    )
+end
+
+"""
+    relu(a::AValue)
+
+Applies elementwise ReLU to AValue `a`.
+
+Returns a new AValue type holding the elementwise ReLU.
+"""
+function relu(a::AValue)
+    output = max.(zero(eltype(a.data)), a.data)
+
+    return AValue(
+        output,
+        zero(output),
+        (a,),
+        dc -> (dc .* (a.data .> 0),)
+    )
+end
+
+#
+# forward: y = W*x
+# dx = W' * dy
+# dW = dy * x'
+#
+"""
+    linear(x::AValue, W::AValue)
+
+Applies a linear transformation to AValue `x` using weight matrix `W`.
+
+Returns a new AValue type holding the transformed output. (Hint: Docstring generated with https://chatgpt.com/share/6a3fcb2d-0ecc-83eb-9e40-c00c1661c295)
+"""
+function linear(x::AValue, W::AValue)
+    y = W.data * x.data
+
+    AValue(
+        y,
+        zero(y),
+        (x, W),
+        dy -> (W.data' * dy, dy * x.data')
+    )
+end
+
+#
+# Forward: p = exp(x - max(x)) / SUM exp(x - max(x)) = e / SUM(e)
+# dx = p .* (dy - dot(dy, p))
+#
+"""
+    softmax(x::AValue{<:AbstractVector})
+
+Applies the softmax function to AValue vector `x`.
+
+Returns a new AValue type holding the softmax probabilities. (Hint: Docstring generated with https://chatgpt.com/share/6a3fcb2d-0ecc-83eb-9e40-c00c1661c295)
+"""
+function softmax(x::AValue{<:AbstractVector})
+    e = exp.(x.data .- maximum(x.data))
+    p = e ./ sum(e)
+
+    AValue(
+        p,
+        zero(p),
+        (x,),
+        dy -> (p .* (dy .- dot(dy, p)),)
+    )
+end
+
+#
+# Forward: y = x * scale, scale = (mean(x^2) + 0.00..)^(-0.5)
+# dx = scale * dy - x * (scale^3 / n) * dot(dy, x) --> dx calculated with LLM, Link to prompt: https://chatgpt.com/share/6a3d41a0-445c-83eb-ba53-876e591115d8
+#e=0.000 
+"""
+    rmsnorm(x::AValue{<:AbstractVector}; eps::Float64 = 1e-5)
+
+Applies RMS normalization to AValue vector `x`.
+
+Returns a new AValue type holding the RMS-normalized vector. (Hint: Docstring generated with https://chatgpt.com/share/6a3fcb2d-0ecc-83eb-9e40-c00c1661c295)
+"""
+function rmsnorm(x::AValue{<:AbstractVector}; eps::Float64 = 1e-5)
+    n = length(x.data)
+    ms = sum(x.data .^ 2) / n
+    scale = (ms + eps) ^ -0.5
+    y = x.data .* scale
+
+    # x.data = scaled
+    # grad = zero(y) --> x über
+    
+    AValue(
+        y, 
+        zero(y),
+        (x,),
+        #(dy -> scale .* dy - x.data * (scale^3 / n) * dot(dy, x.data),))
+        #  scale, scale^3/n, dot(dy, x.data) : skalar
+        #  dy, x.data: vector
+        # out: vector
+        dy -> (scale .* dy .- x.data .* (scale^3 / n) .* dot(dy, x.data),)
+    )
+end
+
+"""
+    backward!(v::AValue)
+
+Computes the gradients of `v` with respect to every `AValue` in its computation
 graph via backpropagation.
 
-This mutates the `v.grad` and of all `Value`s in its graph. Gradients
-are accumulated, so reset them between independent backward passes if a
-node is reused.
+This mutates all gradients in the computational graph. Gradients
+are accumulated, so zeroing the gradients is required between passes.
 """
-function backward!(v::Value)
-    topo = Value[]
-    visited = Set{Value}()
+function backward!(v::AValue)
+    topo = Any[]
+    visited = IdSet{Any}()
 
-    function build_topo(node::Value)
+    function build_topo(node)
         if !(node in visited)
             push!(visited, node)
-            for child in node.children
-                build_topo(child)
+            for parent in node.parents
+                build_topo(parent)
             end
             push!(topo, node)
         end
     end
+
     build_topo(v)
-    v.grad = one(v.data)
+    fill!(v.grad, one(eltype(v.grad)))
 
     for node in reverse(topo)
-        for (child, local_grad) in zip(node.children, node.local_grads)
-            child.grad += local_grad * node.grad  # Accumulate gradients from parents to children
+        parent_grads = node.pullback_fn(node.grad)
+        for (parent, parent_grad) in zip(node.parents, parent_grads)
+            parent.grad .+= parent_grad
         end
     end
 end
