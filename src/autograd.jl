@@ -1,4 +1,4 @@
-import Base: +, -, *, /, log, exp, sum
+import Base: +, -, *, /, ^, log, exp, sum
 
 """
     AValue{D<:AbstractArray, G<:AbstractArray, P<:Tuple, F}

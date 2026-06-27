@@ -9,5 +9,6 @@ include("tokenizer.jl")
 
 export load_data, Tokenizer, encode, decode
 export AValue, Value, backward!, relu
+export mul_elementwise, div_elementwise, pow_elementwise_scalar
 
 end
