@@ -27,7 +27,6 @@ function fd_grads(build, arrays::AbstractArray...)
 end
 
 @testset "autograd.jl" begin
-
     @testset "Leaf construction" begin
         a = AValue([1.0, 2.0, 3.0])
         @test a.data == [1.0, 2.0, 3.0]
@@ -39,7 +38,6 @@ end
 
     # One testset per primitive operation, checking forward value and gradients against hardcoded expectations.
     @testset "Primitives" begin
-
         @testset "AValue + AValue" begin
             a = AValue([1.0, 2.0, 3.0])
             b = AValue([4.0, 5.0, 6.0])
@@ -203,7 +201,6 @@ end
             @test c.data == [0.0, 0.0, 3.0]
             @test a.grad == [0.0, 0.0, 1.0]
         end
-
     end
 
     # Verify that gradients accumulate correctly when a node is reused in the computation graph.
@@ -227,7 +224,6 @@ end
 
     # Cross-check gradients of composite expressions against ForwardDiff to verify correct chain rule implementation.
     @testset "ForwardDiff comparison" begin
-
         @testset "sum(exp(x) + log(x))" begin
             x = [1.0, 2.0, 3.0]
             build_a(v) = exp(v) + log(v)
@@ -276,7 +272,6 @@ end
             @test ours[1] ≈ refs[1]
             @test ours[2] ≈ refs[2]
         end
-
     end
 
     # Verify gradient correctness for larger expressions combining multiple operations and reused nodes.
@@ -294,4 +289,59 @@ end
         @test ours[2] ≈ refs[2]
     end
 
+    # Higher-level layers built on top of the primitives.
+    @testset "Layers" begin
+        @testset "linear" begin
+            x = [1.0, 2.0, -1.0]
+            W = [1.0 0.0 2.0; 0.0 1.0 1.0]
+            xv, Wv = AValue(x), AValue(W)
+            y = linear(xv, Wv)
+            backward!(y)
+            @test y.data == W * x
+            @test xv.grad == transpose(W) * ones(2)
+            @test Wv.grad == ones(2) * transpose(x)
+
+            build_a(a, b) = linear(a, b)
+            build_p(a, b) = b * a
+            ours = our_grads(build_a, x, W)
+            refs = fd_grads(build_p, x, W)
+            @test ours[1] ≈ refs[1]
+            @test ours[2] ≈ refs[2]
+        end
+
+        @testset "softmax" begin
+            x = [1.0, 2.0, 3.0]
+            p = softmax(AValue(x))
+            # Softmax is shift-invariant, so it matches the naive normalised exponential.
+            @test p.data ≈ exp.(x) ./ sum(exp.(x))
+            @test sum(p.data) ≈ 1.0
+
+            build_a(v) = pow_elementwise_scalar(softmax(v), 2)
+            function build_p(v)
+                e = exp.(v .- maximum(v))
+                (e ./ sum(e)) .^ 2
+            end
+            ours = our_grads(build_a, x)
+            refs = fd_grads(build_p, x)
+            @test ours[1] ≈ refs[1]
+        end
+
+        @testset "rmsnorm" begin
+            x = [1.0, 2.0, 3.0, 4.0]
+            eps = 1e-5
+            y = rmsnorm(AValue(x); eps = eps)
+            scale = (sum(x .^ 2) / length(x) + eps) ^ -0.5
+            @test y.data ≈ x .* scale
+
+            build_a(v) = rmsnorm(v) # uses default
+            function build_p(v)
+                n = length(v)
+                s = (sum(v .^ 2) / n + 1e-5) ^ -0.5
+                v .* s
+            end
+            ours = our_grads(build_a, x)
+            refs = fd_grads(build_p, x)
+            @test ours[1] ≈ refs[1]
+        end
+    end
 end
