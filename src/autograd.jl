@@ -153,48 +153,197 @@ must be of same shape.
 
 Returns a new AValue type holding the elementwise multiplication.
 """
-function Value(val::T) where T
-    return Value(val, zero(val), (), ())
+function mul_elementwise(a::AValue, b::AValue)
+    if size(a.data) != size(b.data)
+        throw(DimensionMismatch("Both arguments must have the same shape."))
+    end
+
+    output = a.data .* b.data
+    return AValue(
+        output,
+        zero(output),
+        (a, b),
+        dc -> (dc .* b.data, dc .* a.data)
+    )
 end
 
-# Add
-+(a::Value, b::Value) = Value(a.data + b.data, zero(a.data + b.data), (a, b), (one(a.data), one(b.data)))
-+(a::Value, b::Real) = a + Value(b)
-+(a::Real, b::Value) = Value(a) + b
+function /(a::AValue, b::Real)
+    output = a.data ./ b
 
-# Subract / negate
--(a::Value) = a * -1
--(a::Value, b::Value) = Value(a.data - b.data, zero(a.data - b.data), (a, b), (one(a.data), -one(b.data)))
--(a::Value, b::Real) = a - Value(b)
--(a::Real, b::Value) = Value(a) - b
-
-# Multiply
-*(a::Value, b::Value) = Value(a.data * b.data, zero(a.data * b.data), (a, b), (b.data, a.data))
-*(a::Value, b::Real) = a * Value(b)
-*(a::Real, b::Value) = Value(a) * b
-
-# Divide
-/(a::Value, b::Value) = Value(a.data / b.data, zero(a.data / b.data), (a, b), (one(a.data) / b.data, -a.data / b.data^2))
-/(a::Value, b::Real) = a / Value(b)
-/(a::Real, b::Value) = Value(a) / b
-
-# Pow
-^(a::Value, b::Real) = Value(a.data^b, zero(a.data^b), (a,), (b * (a.data^(b - one(b))),))
-
-# Log
-log(a::Value) = Value(log(a.data), zero(log(a.data)), (a,), (one(a.data) / a.data,))
-
-# Exp
-function exp(a::Value)
-    out = exp(a.data)
-    return Value(out, zero(out), (a,), (out,))
+    return AValue(
+        output,
+        zero(output),
+        (a,),
+        dc -> (dc / b,)
+    )
 end
 
-# ReLU
-function relu(a::Value)
-    out = a.data > zero(a.data) ? a.data : zero(a.data)
-    local_grad = a.data > zero(a.data) ? one(a.data) : zero(a.data)
-    return Value(out, zero(out), (a,), (local_grad,))
+"""
+    div_elementwise(a::AValue, b::AValue)
+
+Divides two AValues (`a` and `b`) elementwise. Both arguments 
+must be of same shape.
+
+Returns a new AValue type holding the elementwise division.
+"""
+function div_elementwise(a::AValue, b::AValue)
+    if size(a.data) != size(b.data)
+        throw(DimensionMismatch("Both arguments must have the same shape."))
+    end
+
+    output = a.data ./ b.data
+    return AValue(
+        output,
+        zero(output),
+        (a, b),
+        dc -> (dc ./ b.data, -dc .* a.data ./ (b.data .* b.data))
+    )
+end
+
+"""
+    pow_elementwise_scalar(a::AValue, b::Real)
+
+Potentiates an AValue `a` by a scalar `b` elementwise.
+
+Returns a new AValue type holding the elementwise potentiation.
+"""
+function pow_elementwise_scalar(a::AValue, b::Real)
+    output = a.data .^ b
+    return AValue(
+        output,
+        zero(output),
+        (a,),
+        dc -> (dc .* b .* (a.data .^ (b - 1)),)
+    )
+end
+
+function log(a::AValue)
+    output = log.(a.data)
+
+    return AValue(
+        output,
+        zero(output),
+        (a,),
+        dc -> (dc ./ a.data,)
+    )
+end
+
+function exp(a::AValue)
+    output = exp.(a.data)
+
+    return AValue(
+        output,
+        zero(output),
+        (a,),
+        dc -> (dc .* output,)
+    )
+end
+
+function sum(a::AValue{<:AbstractVector})
+    output = fill(sum(a.data))
+
+    return AValue(
+        output,
+        zero(output),
+        (a,),
+        dc -> (fill(dc[], size(a.data)),)
+    )
+end
+
+"""
+    relu(a::AValue)
+
+Applies elementwise ReLU to AValue `a`.
+
+Returns a new AValue type holding the elementwise ReLU.
+"""
+function relu(a::AValue)
+    output = max.(zero(eltype(a.data)), a.data)
+
+    return AValue(
+        output,
+        zero(output),
+        (a,),
+        dc -> (dc .* (a.data .> 0),)
+    )
+end
+
+#
+# forward: y = W*x
+# dx = W' * dy
+# dW = dy * x'
+#
+"""
+    linear(x::AValue, W::AValue)
+
+Applies a linear transformation to AValue `x` using weight matrix `W`.
+
+Returns a new AValue type holding the transformed output. (Hint: Docstring generated with https://chatgpt.com/share/6a3fcb2d-0ecc-83eb-9e40-c00c1661c295)
+"""
+function linear(x::AValue, W::AValue)
+    y = W.data * x.data
+
+    AValue(
+        y,
+        zero(y),
+        (x, W),
+        dy -> (W.data' * dy, dy * x.data')
+    )
+end
+
+#
+# Forward: p = exp(x - max(x)) / SUM exp(x - max(x)) = e / SUM(e)
+# dx = p .* (dy - dot(dy, p))
+#
+"""
+    softmax(x::AValue{<:AbstractVector})
+
+Applies the softmax function to AValue vector `x`.
+
+Returns a new AValue type holding the softmax probabilities. (Hint: Docstring generated with https://chatgpt.com/share/6a3fcb2d-0ecc-83eb-9e40-c00c1661c295)
+"""
+function softmax(x::AValue{<:AbstractVector})
+    e = exp.(x.data .- maximum(x.data))
+    p = e ./ sum(e)
+
+    AValue(
+        p,
+        zero(p),
+        (x,),
+        dy -> (p .* (dy .- dot(dy, p)),)
+    )
+end
+
+#
+# Forward: y = x * scale, scale = (mean(x^2) + 0.00..)^(-0.5)
+# dx = scale * dy - x * (scale^3 / n) * dot(dy, x) --> dx calculated with LLM, Link to prompt: https://chatgpt.com/share/6a3d41a0-445c-83eb-ba53-876e591115d8
+#e=0.000 
+"""
+    rmsnorm(x::AValue{<:AbstractVector}; eps::Float64 = 1e-5)
+
+Applies RMS normalization to AValue vector `x`.
+
+Returns a new AValue type holding the RMS-normalized vector. (Hint: Docstring generated with https://chatgpt.com/share/6a3fcb2d-0ecc-83eb-9e40-c00c1661c295)
+"""
+function rmsnorm(x::AValue{<:AbstractVector}; eps::Float64 = 1e-5)
+    n = length(x.data)
+    ms = sum(x.data .^ 2) / n
+    scale = (ms + eps) ^ -0.5
+    y = x.data .* scale
+
+    # x.data = scaled
+    # grad = zero(y) --> x über
+    
+    AValue(
+        y, 
+        zero(y),
+        (x,),
+        #(dy -> scale .* dy - x.data * (scale^3 / n) * dot(dy, x.data),))
+        #  scale, scale^3/n, dot(dy, x.data) : skalar
+        #  dy, x.data: vector
+        # out: vector
+        dy -> (scale .* dy .- x.data .* (scale^3 / n) .* dot(dy, x.data),)
+    )
 end
 
 """
