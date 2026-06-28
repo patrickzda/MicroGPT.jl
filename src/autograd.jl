@@ -1,19 +1,19 @@
-import Base: +, -, *, /, log, exp, sum
+import Base: +, -, *, /, log, exp, sum, getindex, vcat, hcat, transpose
 
 """
-    AValue{D<:AbstractArray, G<:AbstractArray, P<:Tuple, F}
+    AValue{D<:AbstractArray, G<:AbstractArray}
 
 Node in a vector-based automatic differentiation graph.
 
-Each node stores its forward value `data`, accumulated gradient `grad`, 
-its parent nodes `parents` and a pullback function `pullback_fn` that is 
+Each node stores its forward value `data`, accumulated gradient `grad`,
+its parent nodes `parents` and a pullback function `pullback_fn` that is
 used during reverse-mode automatic differentiation.
 """
-struct AValue{D<:AbstractArray, G<:AbstractArray, P<:Tuple, F}
+struct AValue{D<:AbstractArray, G<:AbstractArray}
     data::D
     grad::G
-    parents::P
-    pullback_fn::F
+    parents::Tuple
+    pullback_fn::Function
 end
 
 
@@ -27,6 +27,11 @@ pullback function.
 """
 function AValue(val::T) where {T<:AbstractArray}
     return AValue(val, zero(val), (), _ -> ())
+end
+
+# Broadcasting over a 0-dimensional array collapses to a scalar
+function AValue(data::Real, grad::Real, parents::Tuple, pullback_fn::Function)
+    return AValue(fill(data), fill(grad), parents, pullback_fn)
 end
 
 function +(a::AValue, b::AValue)
@@ -347,6 +352,77 @@ function rmsnorm(x::AValue{<:AbstractVector}; eps::Float64 = 1e-5)
 end
 
 """
+    getindex(a::AValue, inds...)
+
+Index into AValue `a` (e.g. `a[i, :]` to pick a matrix row, or `a[i:j]` to slice
+a vector). Scalar results are wrapped as a 0-dimensional array so they stay
+AValues. The gradient is scattered back into the selected positions of `a`.
+"""
+function getindex(a::AValue, inds...)
+    raw = a.data[inds...]
+    output = raw isa AbstractArray ? raw : fill(raw)
+
+    return AValue(
+        output,
+        zero(output),
+        (a,),
+        function (dc)
+            g = zero(a.data)
+            gview = @view g[inds...]
+            gview .+= raw isa AbstractArray ? dc : dc[]
+            (g,)
+        end
+    )
+end
+
+"""
+    vcat(ts::AValue...)
+
+Concatenate vector AValues into one longer vector AValue (e.g. multi-head
+attention outputs). Gradients are split back to each input in order.
+"""
+function vcat(ts::AValue...)
+    output = vcat((t.data for t in ts)...)
+
+    function pullback(dc)
+        offset = 0
+        return map(ts) do t
+            n = length(t.data)
+            g = dc[offset+1:offset+n]
+            offset += n
+            g
+        end
+    end
+
+    return AValue(output, zero(output), ts, pullback)
+end
+
+"""
+    hcat(ts::AValue...)
+
+Stack vector AValues as the columns of one matrix AValue (e.g. the cached
+attention keys/values of a head, giving an `hd × T` matrix). Gradients flow back
+column-wise to each input.
+"""
+function hcat(ts::AValue...)
+    output = stack(t.data for t in ts)
+
+    pullback(dc) = ntuple(j -> dc[:, j], length(ts))
+
+    return AValue(output, zero(output), ts, pullback)
+end
+
+"""
+    transpose(a::AValue{<:AbstractMatrix})
+
+Transpose a matrix AValue. The output gradient is routed back transposed.
+"""
+function transpose(a::AValue{<:AbstractMatrix})
+    output = Array(transpose(a.data))
+    return AValue(output, zero(output), (a,), dc -> (Array(transpose(dc)),))
+end
+
+"""
     backward!(v::AValue)
 
 Computes the gradients of `v` with respect to every `AValue` in its computation
@@ -357,11 +433,11 @@ are accumulated, so zeroing the gradients is required between passes.
 """
 function backward!(v::AValue)
     topo = Any[]
-    visited = IdSet{Any}()
+    visited = IdSet{Any}()   # key on the (mutable) .grad array's identity
 
     function build_topo(node)
-        if !(node in visited)
-            push!(visited, node)
+        if !(node.grad in visited)
+            push!(visited, node.grad)
             for parent in node.parents
                 build_topo(parent)
             end
