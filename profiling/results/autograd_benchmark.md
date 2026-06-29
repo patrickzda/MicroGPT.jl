@@ -75,13 +75,13 @@ short-lived garbage per backward call is what dominated the Plain flame graph.
 **Plain**:`backward!` is wide and topped by allocation/GC frames from the
 per-op gradient arrays:
 
-![Plain flame graph](../ad_profile_plain.svg)
+![Plain flame graph](./ad_profile_plain.svg)
 
 **`mul!`**: allocation stacks under `backward!` collapse; what remains is
 the matmul kernels (`gemm!`/`mul!`) and the `build_topo` traversal that the
 recursive `backward!` still has to run on every call:
 
-![mul! flame graph](../ad_profile_mul.svg)
+![mul! flame graph](./ad_profile_mul.svg)
 
 ### `mul!` -> Tape: an allocation-free backward replay
 
@@ -106,17 +106,17 @@ with the recursive path still available as a fallback (and now matching `mul!`
 since the underlying autograd is the same).
 
 This is visible directly in the profiles. In the **`mul!`** graph above,
-`backward!` still spends a chunk of its width in **`build_topo`**,
-re-discovering the topological order of the graph on every backward call.
-In the **Tape** graph, that frame is **gone entirely**: ordering happens once in
+`backward!` still spends a lot of its width in **`build_topo`**,
+re-computing the topological order of the graph on every backward call.
+In the **Tape** graph, that frame is gone entirel: ordering happens once in
 `build_recorded` during the forward pass, and the backward replay is a flat loop
 over the tape with no traversal and no allocation:
 
-![Tape flame graph](../ad_profile_tape.svg)
+![Tape flame graph](./ad_profile_tape.svg)
 
 Note how `build_topo` no longer appears under `backward!`, it has been
-replaced by `build_recorded` on the forward side, and the backward portion is
-now just the arithmetic kernels (`gemm!`/`mul!`/`relu`).
+replaced by `build_recorded` on the forward pass, and the backward part is
+now just the arithmetic operations.
 
 ### Cumulative: Plain -> Tape
 
