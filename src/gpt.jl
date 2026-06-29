@@ -112,17 +112,19 @@ end
 
 """
     train!(model::GPT, docs; num_steps=1000, learning_rate=0.01,
-           beta1=0.85, beta2=0.99, eps_adam=1e-8, verbose=true)
+           beta1=0.85, beta2=0.99, eps_adam=1e-8, use_tape=true, verbose=true)
 
 Train `model` in place on `docs` (a list of strings) with one `Adam` optimizer
 over all weight matrices. Each step forwards one document, accumulating the
-per-position cross-entropy loss, then backpropagates with `backward!` (recursive
-topological walk — no tape) and takes one Adam step.
+per-position cross-entropy loss, then backpropagates with `backward!` and takes
+one Adam step.
+
+`use_tape` selects how `backward!` finds its topological order.
 """
 function train!(model::GPT, docs;
     num_steps=1000, learning_rate=0.01,
     beta1=0.85, beta2=0.99, eps_adam=1e-8,
-    verbose=true)
+    use_tape=true, verbose=true)
     cfg = model.config
     tok = model.tokenizer
     opt = Adam(model.params; α=learning_rate, β1=beta1, β2=beta2, ϵ=eps_adam)
@@ -132,18 +134,24 @@ function train!(model::GPT, docs;
         tokens = encode(tok, String(doc))
         n = min(cfg.block_size, length(tokens) - 1)
 
-        # Forward the sequence, accumulating per-position cross-entropy losses
-        keys, values = kv_cache(cfg), kv_cache(cfg)
-        losses = AValue[]
-        for pos_id in 1:n
-            token_id, target_id = tokens[pos_id], tokens[pos_id+1]
-            logits = model(token_id, pos_id, keys, values)
-            probs = softmax(logits)
-            push!(losses, -log(probs[target_id]))
+        # Forward the sequence, accumulating per-position cross-entropy losses.
+        # Recording on the tape (when `use_tape`) makes `backward!` a flat
+        # reverse walk instead of a recursive topological sort of the graph.
+        local loss
+        forward = function ()
+            keys, values = kv_cache(cfg), kv_cache(cfg)
+            losses = AValue[]
+            for pos_id in 1:n
+                token_id, target_id = tokens[pos_id], tokens[pos_id+1]
+                logits = model(token_id, pos_id, keys, values)
+                probs = softmax(logits)
+                push!(losses, -log(probs[target_id]))
+            end
+            loss = reduce(+, losses) / n   # average loss over the document
         end
-        loss = reduce(+, losses) / n   # average loss over the document
+        tape = use_tape ? record!(forward) : (forward(); nothing)
 
-        backward!(loss)
+        backward!(loss, tape)
 
         # Adam update with linear learning-rate decay
         opt.α = learning_rate * (1 - step / num_steps)

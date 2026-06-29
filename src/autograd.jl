@@ -6,16 +6,48 @@ using LinearAlgebra: dot, mul!
 
 Node in a vector-based automatic differentiation graph.
 
-Each node stores its forward value `data` and accumulated gradient `grad` (both
-`Array{T,N}`, so the dimensionality `N` is part of the type — 2 for a matrix,
-1 for a vector, 0 for a scalar), its parent nodes `parents` and a pullback
+Each node stores its forward value `data` and accumulated 
+gradient `grad`, its parent nodes `parents` and a pullback
 function `pullback_fn` used during reverse-mode automatic differentiation.
 """
-struct AValue{T<:AbstractFloat, N}
-    data::Array{T, N}
-    grad::Array{T, N}
+# Tape to speed up the backward / no recursive walk trough the graph.
+const _TAPE = Base.RefValue{Union{Nothing,Vector}}(nothing)
+
+struct AValue{T<:AbstractFloat,N}
+    data::Array{T,N}
+    grad::Array{T,N}
     parents::Tuple
     pullback_fn::Function
+
+    # Construct a graph node with recording on tape
+    function AValue{T,N}(data::Array{T,N}, grad::Array{T,N}, parents::Tuple, pullback_fn::Function) where {T<:AbstractFloat,N}
+        node = new{T,N}(data, grad, parents, pullback_fn)
+        tape = _TAPE[]
+        (tape === nothing || isempty(parents)) || push!(tape, node)
+        return node
+    end
+end
+
+# Outer constructor that infers the type parameters
+AValue(data::Array{T,N}, grad::Array{T,N}, parents::Tuple, pullback_fn::Function) where {T<:AbstractFloat,N} =
+    AValue{T,N}(data, grad, parents, pullback_fn)
+
+"""
+    record!(f) -> tape
+
+Run forward pass `f` with tape recording enabled and return the tape (the nodes
+created, in topological order).
+"""
+function record!(f)
+    prev = _TAPE[]
+    tape = AValue[]
+    _TAPE[] = tape
+    try
+        f()
+    finally
+        _TAPE[] = prev
+    end
+    return tape
 end
 
 
@@ -28,7 +60,7 @@ Returns a node holding value `val`, zero grads, no parents and an empty
 pullback function. Integer arrays are promoted to floats so gradients are
 always float-backed.
 """
-function AValue(data::Array{T, N}) where {T<:AbstractFloat, N}
+function AValue(data::Array{T,N}) where {T<:AbstractFloat,N}
     return AValue(data, zero(data), (), _ -> ())
 end
 AValue(data::AbstractArray{<:Real}) = AValue(float.(collect(data)))
@@ -117,7 +149,7 @@ end
 
 # Matrix multiply: matrix × vector and matrix × matrix in one method.
 # d(A*B): A.grad += dc * B', B.grad += A' * dc, accumulated in place with `mul!`.
-function *(a::AValue{<:AbstractFloat, 2}, b::Union{AValue{<:AbstractFloat, 1}, AValue{<:AbstractFloat, 2}})
+function *(a::AValue{<:AbstractFloat,2}, b::Union{AValue{<:AbstractFloat,1},AValue{<:AbstractFloat,2}})
     output = a.data * b.data
 
     return AValue(
@@ -247,7 +279,7 @@ function exp(a::AValue)
     )
 end
 
-function sum(a::AValue{<:AbstractFloat, 1})
+function sum(a::AValue{<:AbstractFloat,1})
     output = fill(sum(a.data))
 
     return AValue(
@@ -313,7 +345,7 @@ Applies the softmax function to AValue vector `x`.
 
 Returns a new AValue type holding the softmax probabilities. (Hint: Docstring generated with https://chatgpt.com/share/6a3fcb2d-0ecc-83eb-9e40-c00c1661c295)
 """
-function softmax(x::AValue{<:AbstractFloat, 1})
+function softmax(x::AValue{<:AbstractFloat,1})
     e = exp.(x.data .- maximum(x.data))
     p = e ./ sum(e)
 
@@ -336,7 +368,7 @@ Applies RMS normalization to AValue vector `x`.
 
 Returns a new AValue type holding the RMS-normalized vector. (Hint: Docstring generated with https://chatgpt.com/share/6a3fcb2d-0ecc-83eb-9e40-c00c1661c295)
 """
-function rmsnorm(x::AValue{<:AbstractFloat, 1}; eps::Float64 = 1e-5)
+function rmsnorm(x::AValue{<:AbstractFloat,1}; eps::Float64=1e-5)
     n = length(x.data)
     ms = sum(x.data .^ 2) / n
     scale = (ms + eps) ^ -0.5
@@ -385,7 +417,7 @@ function vcat(ts::AValue...)
         offset = 0
         for t in ts
             n = length(t.data)
-            t.grad .+= @view dc[offset+1:offset+n]
+            t.grad .+= @view dc[(offset+1):(offset+n)]
             offset += n
         end
     end
@@ -417,35 +449,48 @@ end
 
 Transpose a matrix AValue. The output gradient is routed back transposed.
 """
-function transpose(a::AValue{<:AbstractFloat, 2})
+function transpose(a::AValue{<:AbstractFloat,2})
     output = Array(transpose(a.data))
     return AValue(output, zero(output), (a,), dc -> (a.grad .+= transpose(dc)))
 end
 
 """
-    backward!(v::AValue)
+    backward!(v::AValue, tape=nothing)
 
 Computes the gradients of `v` with respect to every `AValue` in its computation
 graph via backpropagation.
-"""
-function backward!(v::AValue)
-    topo = Any[]
-    visited = IdSet{Any}()   # key on the (mutable) .grad array's identity
 
-    function build_topo(node)
-        if !(node.grad in visited)
-            push!(visited, node.grad)
-            for parent in node.parents
-                build_topo(parent)
+Pass the `tape` returned by [`record!`](@ref) (with `v` as its last node) to take
+the flat reverse walk over it.
+"""
+function backward!(v::AValue, tape::Union{Nothing,Vector}=nothing)
+    fill!(v.grad, one(eltype(v.grad)))
+
+    if tape === nothing
+        # No tape: build a topological order by recursively walking the graph
+        topo = Any[]
+        visited = IdSet{Any}()
+
+        function build_topo(node)
+            if !(node.grad in visited)
+                push!(visited, node.grad)
+                for parent in node.parents
+                    build_topo(parent)
+                end
+                push!(topo, node)
             end
-            push!(topo, node)
+        end
+
+        build_topo(v)
+        for node in reverse(topo)
+            node.pullback_fn(node.grad)
+        end
+    else
+        # Tape already holds the nodes in topological order, just walk it backwards
+        for i in lastindex(tape):-1:firstindex(tape)
+            tape[i].pullback_fn(tape[i].grad)
         end
     end
 
-    build_topo(v)
-    fill!(v.grad, one(eltype(v.grad)))
-
-    for node in reverse(topo)
-        node.pullback_fn(node.grad)
-    end
+    return nothing
 end
