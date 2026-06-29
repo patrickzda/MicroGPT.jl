@@ -6,7 +6,7 @@ using MicroGPT
     docs = ["abc", "bcd", "abcd"]
     tok = Tokenizer(docs)
     cfg = GPTConfig(vocab_size=tok.vocab_size, n_embd=8,
-                    n_head=2, n_layer=2, block_size=16)
+        n_head=2, n_layer=2, block_size=16)
     model = GPT(cfg, tok)
 
     # Check the dimensions

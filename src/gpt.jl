@@ -92,12 +92,12 @@ function (model::GPT)(token_id, pos_id, keys, values)
         head_outs = AValue[]
         for h in 1:cfg.n_head
             hs = (h - 1) * hd
-            push!(keys[li][h], k[hs+1:hs+hd])    # cache the keys
-            push!(values[li][h], v[hs+1:hs+hd])  # cache the values
+            push!(keys[li][h], k[(hs+1):(hs+hd)])    # cache the keys
+            push!(values[li][h], v[(hs+1):(hs+hd)])  # cache the values
             K = hcat(keys[li][h]...)    # hd × t: cached keys as columns
             V = hcat(values[li][h]...)  # hd × t: cached values as columns
-            attn_weights = softmax(transpose(K) * q[hs+1:hs+hd] / hd^0.5)
-            push!(head_outs, V * attn_weights)  
+            attn_weights = softmax(transpose(K) * q[(hs+1):(hs+hd)] / hd^0.5)
+            push!(head_outs, V * attn_weights)
         end
         x = sd["layer$li.attn_wo"] * vcat(head_outs...) + x_residual
 

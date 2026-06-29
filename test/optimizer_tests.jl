@@ -62,7 +62,7 @@ set_grads!(params, g) =
     end
 
     # Test the reset of the gradients
-    @testset "zero_grad! clears the gradients (Adam)"  begin
+    @testset "zero_grad! clears the gradients (Adam)" begin
         p = AValue([5.0, -3.0])
         opt = Adam([p]; α=0.01, β1=0.85, β2=0.99, ϵ=1e-8)
         p.grad .= [2.0, -4.0]
