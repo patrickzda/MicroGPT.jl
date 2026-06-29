@@ -35,7 +35,7 @@ using MicroGPT
 
     # save_model / load_model
     path = tempname()
-    save_model(path, model, tok.uchars)
+    save_model(path, model)
     m2 = load_model(path)
     @test m2.config == model.config
     for (name, t) in model.state_dict

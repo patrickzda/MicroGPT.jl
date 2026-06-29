@@ -203,16 +203,16 @@ end
 
 # Persistence 
 """
-    save_model(path, model::GPT, uchars::Vector{Char})
+    save_model(path, model::GPT)
 
 Save `model`: its config, raw weight matrices and the tokenizer vocabulary.
 `load_model` rebuilds an equivalent `GPT` from the file.
 """
-function save_model(path::AbstractString, model::GPT, uchars::Vector{Char})
+function save_model(path::AbstractString, model::GPT)
     weights = Dict{String,Matrix{Float64}}(
         name => copy(t.data) for (name, t) in model.state_dict
     )
-    serialize(path, (config=model.config, weights=weights, uchars=uchars))
+    serialize(path, (config=model.config, weights=weights, uchars=model.tokenizer.uchars))
     return path
 end
 
