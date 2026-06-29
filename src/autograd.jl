@@ -1,6 +1,10 @@
 import Base: +, -, *, /, log, exp, sum, getindex, vcat, hcat, transpose
 using LinearAlgebra: dot, mul!
 
+# Tape to speed up the backward / no recursive walk trough the graph.
+const _TAPE = Base.RefValue{Union{Nothing,Vector}}(nothing)
+
+
 """
     AValue{T<:AbstractFloat, N}
 
@@ -10,9 +14,6 @@ Each node stores its forward value `data` and accumulated
 gradient `grad`, its parent nodes `parents` and a pullback
 function `pullback_fn` used during reverse-mode automatic differentiation.
 """
-# Tape to speed up the backward / no recursive walk trough the graph.
-const _TAPE = Base.RefValue{Union{Nothing,Vector}}(nothing)
-
 struct AValue{T<:AbstractFloat,N}
     data::Array{T,N}
     grad::Array{T,N}

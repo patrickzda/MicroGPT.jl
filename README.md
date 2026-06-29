@@ -100,14 +100,7 @@ pkg> instantiate
 
 ### Running the tests
 
-From the repository root, run the test suite directly against the checkout. The
-tests have their own environment under `test/`, so activate it when invoking the
-runner:
-
-```bash
-julia --project=test test/runtests.jl
-```
-or:
+Run the test by using `test` in package mode, and MicroGPT as active package.
 
 ```julia
 (MicroGPT) pkg> test
