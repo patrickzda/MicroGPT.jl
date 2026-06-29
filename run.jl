@@ -25,8 +25,12 @@ for _ in 1:20
     println("  ", generate(model; temperature = 0.8))
 end
 
-save_model("model.jls", model, tokenizer.uchars)
+save_model("model.jls", model, tokenizer.uchars) # Save the trained model
 println("\nSaved trained model to model.jls")
-new_model = load_model("model.jls")
+new_model = load_model("model.jls")              # Load the trained model 
 
-
+# Generate with the loaded model
+println("\nSamples:")
+for _ in 1:10
+    println("  ", generate(model; temperature = 0.8))
+end

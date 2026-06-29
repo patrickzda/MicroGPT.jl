@@ -97,7 +97,7 @@ function (model::GPT)(token_id, pos_id, keys, values)
             K = hcat(keys[li][h]...)    # hd × t: cached keys as columns
             V = hcat(values[li][h]...)  # hd × t: cached values as columns
             attn_weights = softmax(transpose(K) * q[hs+1:hs+hd] / hd^0.5)
-            push!(head_outs, V * attn_weights)
+            push!(head_outs, V * attn_weights)  
         end
         x = sd["layer$li.attn_wo"] * vcat(head_outs...) + x_residual
 
@@ -132,7 +132,7 @@ function train!(model::GPT, docs;
         tokens = encode(tok, String(doc))
         n = min(cfg.block_size, length(tokens) - 1)
 
-        # Forward the sequence, accumulating per-position cross-entropy losses.
+        # Forward the sequence, accumulating per-position cross-entropy losses
         keys, values = kv_cache(cfg), kv_cache(cfg)
         losses = AValue[]
         for pos_id in 1:n
@@ -145,10 +145,10 @@ function train!(model::GPT, docs;
 
         backward!(loss)
 
-        # Adam update with linear learning-rate decay.
+        # Adam update with linear learning-rate decay
         opt.α = learning_rate * (1 - step / num_steps)
         step!(opt)
-        zero_grad!(opt)
+        zero_grad!(opt) # Reset the grads before the next step
 
         verbose && println("step $(lpad(step + 1, 4)) / $num_steps | loss $(round(loss.data[], digits=4))")
     end

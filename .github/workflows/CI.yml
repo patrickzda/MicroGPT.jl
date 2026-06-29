@@ -9,6 +9,7 @@ on:
       - cleanup-review-1
       - feedback-from-adrian
       - autograd-vec
+      - model
     tags: ['*']
   pull_request:
   workflow_dispatch:
