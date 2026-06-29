@@ -20,29 +20,6 @@ package manager (press `]` in the Julia REPL to enter package mode):
 pkg> add https://github.com/patrickzda/MicroGPT.jl
 ```
 
-### Usage
-
-```julia
-using MicroGPT
-
-# Load the names dataset (downloads automatically on first run)
-docs = load_data()
-
-# Build a character-level tokenizer from the dataset
-tok = Tokenizer(docs)
-
-# Encode a name to token IDs (wrapped with boundary tokens), decode back
-ids = encode(tok, "anna")
-decode(tok, ids)
-
-# Autograd: wrap scalars in Value, compute gradients
-a = Value(2.0)
-b = Value(3.0)
-c = a * b + relu(a - b)
-backward!(c)
-a.grad, b.grad
-```
-
 ### Training a GPT
 
 The snippet below trains a small character-level GPT on the names dataset,
@@ -87,8 +64,7 @@ new_model = load_model("model.jls")
 
 ### Running the tests
 
-When MicroGPT.jl is installed as a package, run its test suite through the package
-manager. There is no local `test/` directory to point at:
+When MicroGPT.jl is installed as a package, run its test suite through the package manager:
 
 ```julia
 pkg> test MicroGPT
@@ -145,6 +121,8 @@ src/
   MicroGPT.jl    # module entry point, exports the public API
   autograd.jl    # scalar reverse-mode autograd (Value, backward!, relu)
   dataloader.jl  # dataset loading (load_data)
+  gpt.jl         # gpt model (layers, train, inference)
+  optimizer.jl   # Adam optimizer
   tokenizer.jl   # character-level tokenizer (Tokenizer, encode, decode)
 test/            # test suite and fixtures, run via test/runtests.jl
 docs/            # documentation sources
