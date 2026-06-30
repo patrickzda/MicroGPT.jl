@@ -289,6 +289,111 @@ end
         @test ours[2] ≈ refs[2]
     end
 
+    # Indexing and shape-manipulating ops that route gradients back to selected positions.
+    @testset "Indexing and shape ops" begin
+        @testset "getindex - matrix row" begin
+            a = AValue([1.0 2.0; 3.0 4.0])
+            r = a[1, :]
+            backward!(r)
+            @test r.data == [1.0, 2.0]
+            @test a.grad == [1.0 1.0; 0.0 0.0]
+        end
+
+        @testset "getindex - vector slice" begin
+            a = AValue([1.0, 2.0, 3.0, 4.0])
+            s = a[2:3]
+            backward!(s)
+            @test s.data == [2.0, 3.0]
+            @test a.grad == [0.0, 1.0, 1.0, 0.0]
+        end
+
+        @testset "getindex - scalar element" begin
+            a = AValue([1.0, 2.0, 3.0])
+            s = a[2]
+            # Scalar results are wrapped as a 0-dimensional array.
+            @test s.data == fill(2.0)
+            backward!(s)
+            @test a.grad == [0.0, 1.0, 0.0]
+        end
+
+        @testset "getindex - repeated index accumulates" begin
+            a = AValue([1.0, 2.0, 3.0])
+            # Reuse the same element twice; gradient must accumulate.
+            c = a[1] + a[1]
+            backward!(c)
+            @test c.data == fill(2.0)
+            @test a.grad == [2.0, 0.0, 0.0]
+        end
+
+        @testset "getindex - ForwardDiff comparison" begin
+            x = [1.0, 2.0, 3.0, 4.0]
+            build_a(v) = pow_elementwise_scalar(v[2:4], 2)
+            build_p(v) = v[2:4] .^ 2
+            ours = our_grads(build_a, x)
+            refs = fd_grads(build_p, x)
+            @test ours[1] ≈ refs[1]
+        end
+
+        @testset "vcat" begin
+            a = AValue([1.0, 2.0])
+            b = AValue([3.0, 4.0, 5.0])
+            c = vcat(a, b)
+            backward!(c)
+            @test c.data == [1.0, 2.0, 3.0, 4.0, 5.0]
+            @test a.grad == [1.0, 1.0]
+            @test b.grad == [1.0, 1.0, 1.0]
+        end
+
+        @testset "vcat - ForwardDiff comparison" begin
+            x = [1.0, 2.0]
+            y = [3.0, 4.0, 5.0]
+            build_a(u, v) = pow_elementwise_scalar(vcat(u, v), 2)
+            build_p(u, v) = vcat(u, v) .^ 2
+            ours = our_grads(build_a, x, y)
+            refs = fd_grads(build_p, x, y)
+            @test ours[1] ≈ refs[1]
+            @test ours[2] ≈ refs[2]
+        end
+
+        @testset "hcat" begin
+            a = AValue([1.0, 2.0])
+            b = AValue([3.0, 4.0])
+            c = hcat(a, b)
+            backward!(c)
+            @test c.data == [1.0 3.0; 2.0 4.0]
+            @test a.grad == [1.0, 1.0]
+            @test b.grad == [1.0, 1.0]
+        end
+
+        @testset "hcat - ForwardDiff comparison" begin
+            x = [1.0, 2.0]
+            y = [3.0, 4.0]
+            build_a(u, v) = pow_elementwise_scalar(hcat(u, v), 2)
+            build_p(u, v) = hcat(u, v) .^ 2
+            ours = our_grads(build_a, x, y)
+            refs = fd_grads(build_p, x, y)
+            @test ours[1] ≈ refs[1]
+            @test ours[2] ≈ refs[2]
+        end
+
+        @testset "transpose" begin
+            a = AValue([1.0 2.0 3.0; 4.0 5.0 6.0])
+            t = transpose(a)
+            backward!(t)
+            @test t.data == [1.0 4.0; 2.0 5.0; 3.0 6.0]
+            @test a.grad == ones(2, 3)
+        end
+
+        @testset "transpose - ForwardDiff comparison" begin
+            A = [1.0 2.0 3.0; 4.0 5.0 6.0]
+            build_a(m) = pow_elementwise_scalar(transpose(m), 2)
+            build_p(m) = permutedims(m) .^ 2
+            ours = our_grads(build_a, A)
+            refs = fd_grads(build_p, A)
+            @test ours[1] ≈ refs[1]
+        end
+    end
+
     # Higher-level layers built on top of the primitives.
     @testset "Layers" begin
         @testset "linear" begin

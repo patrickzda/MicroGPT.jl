@@ -20,33 +20,51 @@ package manager (press `]` in the Julia REPL to enter package mode):
 pkg> add https://github.com/patrickzda/MicroGPT.jl
 ```
 
-### Usage
+### Training a GPT
+
+The snippet below trains a small character-level GPT on the names dataset,
+generates samples, and saves/loads the trained model. It is the same runnable
+[`run.jl`](run.jl) script at the project root, which you can execute with:
+
+```bash
+julia --project=. run.jl
+```
 
 ```julia
 using MicroGPT
 
-# Load the names dataset (downloads automatically on first run)
-docs = load_data()
+# Load the dataset (downloads to `input.txt` on first run) and build a tokenizer
+docs = load_data("input.txt")
+tokenizer = Tokenizer(docs)
+println("num docs: $(length(docs)) | vocab size: $(tokenizer.vocab_size)")
 
-# Build a character-level tokenizer from the dataset
-tok = Tokenizer(docs)
+# Configure and create the model
+config = GPTConfig(
+    vocab_size = tokenizer.vocab_size,
+    n_embd     = 16,
+    n_head     = 4,
+    n_layer    = 1,
+    block_size = 16,
+)
+model = GPT(config, tokenizer)
 
-# Encode a name to token IDs (wrapped with boundary tokens), decode back
-ids = encode(tok, "anna")
-decode(tok, ids)
+# Train
+train!(model, docs; num_steps = 2000, learning_rate = 0.01)
 
-# Autograd: wrap scalars in Value, compute gradients
-a = Value(2.0)
-b = Value(3.0)
-c = a * b + relu(a - b)
-backward!(c)
-a.grad, b.grad
+# Generate some samples
+println("\nSamples:")
+for _ in 1:20
+    println("  ", generate(model; temperature = 0.8))
+end
+
+# Save and reload the trained model
+save_model("model.jls", model)
+new_model = load_model("model.jls")
 ```
 
 ### Running the tests
 
-When MicroGPT.jl is installed as a package, run its test suite through the package
-manager. There is no local `test/` directory to point at:
+When MicroGPT.jl is installed as a package, run its test suite through the package manager:
 
 ```julia
 pkg> test MicroGPT
@@ -82,14 +100,7 @@ pkg> instantiate
 
 ### Running the tests
 
-From the repository root, run the test suite directly against the checkout. The
-tests have their own environment under `test/`, so activate it when invoking the
-runner:
-
-```bash
-julia --project=test test/runtests.jl
-```
-or:
+Run the test by using `test` in package mode, and MicroGPT as active package.
 
 ```julia
 (MicroGPT) pkg> test
@@ -103,6 +114,8 @@ src/
   MicroGPT.jl    # module entry point, exports the public API
   autograd.jl    # scalar reverse-mode autograd (Value, backward!, relu)
   dataloader.jl  # dataset loading (load_data)
+  gpt.jl         # gpt model (layers, train, inference)
+  optimizer.jl   # Adam optimizer
   tokenizer.jl   # character-level tokenizer (Tokenizer, encode, decode)
 test/            # test suite and fixtures, run via test/runtests.jl
 docs/            # documentation sources

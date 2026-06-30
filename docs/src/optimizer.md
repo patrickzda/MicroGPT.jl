@@ -33,3 +33,27 @@ parameters and accepts the standard Adam hyperparameters as keyword arguments:
 ```julia
 opt = Adam(params; α=0.001, β1=0.9, β2=0.999)
 ```
+
+## Example
+
+The loop below drives a parameter `W` toward a target vector by minimizing the
+squared error. Each iteration zeroes the gradients, runs a backward pass, and
+applies one [`step!`](@ref):
+
+```@example optimizer
+using MicroGPT
+
+W = AValue([0.0, 0.0, 0.0])
+target = AValue([1.0, 2.0, 3.0])
+opt = Adam([W]; α=0.1)
+
+for _ in 1:300
+    zero_grad!(opt)
+    diff = W - target
+    loss = sum(mul_elementwise(diff, diff))
+    backward!(loss)
+    step!(opt)
+end
+
+W.data
+```

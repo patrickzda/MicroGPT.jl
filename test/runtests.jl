@@ -6,4 +6,5 @@ using Test
     include("dataloader_tests.jl")
     include("autograd_tests.jl")
     include("optimizer_tests.jl")
+    include("gpt_tests.jl")
 end
